@@ -1,0 +1,64 @@
+---
+classoption: portrait
+header-includes:
+- \usepackage{booktabs}
+- \usepackage{longtable}
+- \usepackage{array}
+- \usepackage{multirow}
+- \usepackage[table]{xcolor}
+- \usepackage{wrapfig}
+- \usepackage{float}
+- \usepackage{colortbl}
+- \usepackage{pdflscape}
+- \usepackage{tabu}
+- \usepackage{threeparttable}
+- \usepackage[normalem]{ulem}
+- \usepackage{placeins}
+- \usepackage{pdfpages}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message=FALSE)
+```
+
+```{r}
+library(knitr)
+library(markdown)
+library(rmarkdown)
+library(kableExtra)
+library(timevis)
+library(webshot)
+library(dplyr)
+```
+
+```{r}
+pat_selected <- pat[pat$patpatientid == patient,]
+patID_selected <- pat_selected$patpatientid
+```
+
+
+# Report for `r patient`
+Pseudo ID: `r pat_selected$patpseudoid`   
+Diagnosis: `r pat_selected$patdiagnosis`  
+Subdiagnosis: `r pat_selected$patdiagnosissub`  
+Project: `r pat_selected$prjname`  
+
+\pagebreak
+
+### Mutations from Whole Exome Sequencing
+\FloatBarrier
+```{r}
+if(patID_selected %in% wes_snv$patpatientid) {
+  sampleID <- unique(wes_snv_report$smpsampleid)
+  wes_snv_report %>%
+    select(-smpsampleid) %>%
+    kable("latex", longtable = T, escape = F, booktabs = T, linesep = "", caption = paste("SNVs from WES in", sampleID) ) %>%
+    kable_styling(full_width = TRUE,  latex_options = c("striped", "scale_down", "repeat_header") ) %>%
+    column_spec(1, width = "1.7cm") %>%
+    column_spec(4, width = "1.1cm") %>%
+    column_spec(5, width = "1.1cm") %>%
+    column_spec(6, width = "1.1cm") 
+
+}
+```
+
