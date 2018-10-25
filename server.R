@@ -2,10 +2,12 @@ library(DT)
 library(RSQLite)
 library(dplyr)
 library(timevis)
+library(plotly)
+library(ggplot2)
 
 
 # Connect to the database
-db <- dbConnect(RSQLite::SQLite(), "/Users/huellein/Documents/project/cll/script/RLIMS/rlims.db")
+db <- dbConnect(RSQLite::SQLite(), "/Users/huellein/Documents/project/cll/script/github/RLIMS/rlims.db")
 
 
 # Get column names and tables
@@ -38,8 +40,12 @@ getTbl <- function(table) {
     query <- dbGetQuery(db,"SELECT anuid, anuname, anucat, anudescription
                         FROM analysislookup
                         ORDER BY anuname;")
+  } else if (table == "storage") {
+    query <- dbGetQuery(db, "SELECT stoid, stofreezer, stotype, stotower, stobox, stolayout
+                        FROM storage
+                        ORDER BY stofreezer, stotower, stobox;")
   } else if (table == "aliquot") {
-    query <- dbGetQuery(db,"SELECT a.alqid, s.smpsampleid, a.alqdate, users1.usrinitials AS prepared_by, a.alqsampletype, a.alqcelltype, a.alqcellnumber, a.alqvolume, a.alqconc, a.alqfreezer, a.alqtower, a.alqbox, a.alqposition, a.alqempty, a.alqdateused, users2.usrinitials AS used_by, a.alqpurpose, a.alqcomment 
+    query <- dbGetQuery(db,"SELECT a.alqid, s.smpsampleid, a.alqdate, users1.usrinitials AS prepared_by, a.alqsampletype, a.alqcelltype, a.alqcellnumber, a.alqvolume, a.alqconc, a.alqbox, a.alqposition, a.alqempty, a.alqdateused, users2.usrinitials AS used_by, a.alqpurpose, a.alqcomment 
                         FROM aliquot a
                         LEFT OUTER JOIN sample s ON a.alqsmpidref = s.smpid
                         LEFT OUTER JOIN users AS users1 ON a.alqusridref = users1.usrid 
@@ -66,7 +72,7 @@ tblSmp_names <- c("AutoID", "Patient ID", "Sample ID", "Date", "Received on", "L
 tblSmp_matchNames <- as.data.frame(cbind(Fields = tblSmp_fields, Names = tblSmp_names))
 
 tblAlq_fields <- names(getTbl("aliquot"))
-tblAlq_names <- c("AutoID", "Sample ID", "Prepared on", "Prepared by", "Sample type", "Cell type", "Cell number", "Volume", "Concentration", "Freezer", "Tower/Rack", "Box", "Position", "Empty", "Used on", "Used by", "Used for", "Comment")
+tblAlq_names <- c("AutoID", "Sample ID", "Prepared on", "Prepared by", "Sample type", "Cell type", "Cell number", "Volume", "Concentration", "Box", "Position", "Empty", "Used on", "Used by", "Used for", "Comment")
 tblAlq_matchNames <- as.data.frame(cbind(Fields = tblAlq_fields, Names = tblAlq_names))
 
 tblAnl_fields <- getColNames("analysis")
@@ -93,6 +99,8 @@ tbl_matchNames$Names <- as.character(tbl_matchNames$Names)
 ## Retrieve tables
 pat <- getTbl("patient")
 smp <- getTbl("sample")
+sto <- getTbl("storage")
+sto$box <- paste0(sto$stofreezer, "_", sto$stotype, "_T", sto$stotower, "_B", sto$stobox)
 alq <- getTbl("aliquot")
 anl <- getTbl("analysis")
 anu <- getTbl("analysislookup")
@@ -136,7 +144,7 @@ ttSamples$group <- mygroups$id[match(ttSamples$groupName, mygroups$content)]
 
 # Amplicon seq
 # ----
-ampliconSeq_snv <- read.csv("/Users/huellein/Documents/project/cll/script/patientExplorer/ampliconSeq_random_data.csv")
+ampliconSeq_snv <- read.csv("/Users/huellein/Documents/project/cll/script/github/patientExplorer/ampliconSeq_random_data.csv")
 # Add the patient id
 ampliconSeq_snv <- merge(smp[, c("smpsampleid", "patpatientid")], ampliconSeq_snv, by.x = "smpsampleid", by.y = "Sample", all.y = TRUE)
 # ----
@@ -144,13 +152,12 @@ ampliconSeq_snv <- merge(smp[, c("smpsampleid", "patpatientid")], ampliconSeq_sn
 
 # WES
 # ----
-wes_snv <- read.csv("/Users/huellein/Documents/project/cll/script/patientExplorer/wes_random_data.csv")
+wes_snv <- read.csv("/Users/huellein/Documents/project/cll/script/github/patientExplorer/wes_random_data.csv")
 # Add the patient id
 wes_snv <- merge(smp[, c("smpsampleid", "patpatientid")], wes_snv, by.x = "smpsampleid", by.y = "Sample", all.y = TRUE)
 
 wes_cnv_plot <- list.files("www/WES")
 names(wes_cnv_plot) <- sapply(strsplit(wes_cnv_plot, "_"), `[`, 1 )
-  
 
 # ----
 
@@ -158,6 +165,7 @@ names(wes_cnv_plot) <- sapply(strsplit(wes_cnv_plot, "_"), `[`, 1 )
 function(input, output, session) {
   
   # Tab Queries
+  # ----
   
   ## Generate output tables
   analysis_loop <- sort(unique(anl$anuname))
@@ -322,7 +330,6 @@ function(input, output, session) {
   ## Tables
   
   ### Patients
-  # ----
   get_qyr_pat_filtered <- reactive({
     
     # Diagnosis filter
@@ -354,12 +361,8 @@ function(input, output, session) {
     }
   )
   
-    
-  # ----
-  
-  
-  ## Samples
-  # ----
+
+  ### Samples
   get_qyr_smp_filtered <- reactive({
     pat_filtered <- get_qyr_pat_filtered()
     smp_filtered <- filter(smp_output, patpatientid %in% pat_filtered$patpatientid)
@@ -383,11 +386,9 @@ function(input, output, session) {
       write.csv(tbl, file, row.names = FALSE)
     }
   )
-  # ----
+
   
-  
-  ## Aliquot
-  # ----
+  ### Aliquot
   get_qyr_alq_filtered <- reactive({
     
     if(!is.null(input$flt_alqcelltype_na)) {
@@ -423,11 +424,9 @@ function(input, output, session) {
       write.csv(tbl, file, row.names = FALSE)
     }
   )
-  # ----
+
   
-  
-  ## Analysis
-  # ----
+  ### Analysis
   get_qyr_anl_filtered <- reactive({
     
     smp_filtered <- get_qyr_smp_filtered()
@@ -455,10 +454,139 @@ function(input, output, session) {
       write.csv(tbl, file, row.names = FALSE)
     }
   )
+  
+  # ----
+
+
+  # Tab Boxes
   # ----
   
+  ## UI select box
+  output$select_box <- renderUI({
+    values <- sto[["box"]]
+    selectInput("select_box", "Select box", choices = c("", values), selected = "")
+  })
   
-  ## Genetic data
+  
+  ## Filter aliquot table by box and add patient ID and sample ID
+  get_box_filtered <- reactive({
+    
+    #### If a box is selected, filter aliquot table and format the table
+    if(length(input$select_box) > 0) {
+      if( !is.null(input$select_box) & input$select_box != "" ) {
+        
+        alq_filtered <- filter(alq, alqbox == input$select_box)
+        
+        smp_alq <- merge(smp[,c("patpatientid", "smpsampleid")], alq_filtered, by = "smpsampleid")
+        
+        alq_format <- smp_alq %>%
+          arrange(alqposition) %>%
+          select(-alqid)
+        
+      } 
+    }
+    
+  })
+  
+  
+  ## Box table
+  ### Output box table
+  output$tbl_box <- DT::renderDataTable({
+    
+    if(length(input$select_box) > 0) {
+      if( !is.null(input$select_box) & input$select_box != "" ) {
+        
+        tbl <- get_box_filtered()
+        names(tbl) <- ifelse(names(tbl) %in% tbl_matchNames$Fields, tbl_matchNames$Names[match(names(tbl), tbl_matchNames$Fields)], names(tbl))
+        return(tbl)
+      }
+    }
+    
+  }, rownames = FALSE, filter = 'top', options = list(pageLength = 25, lengthMenu = c(10, 25, 50, 100)))
+  
+  ### Download box table
+  output$download_tbl_box <- downloadHandler(
+    filename = function() {
+      paste0(input$select_box, "_", Sys.Date(), ".csv")
+    },
+    content = function(file) {
+      tbl <- get_box_filtered()
+      names(tbl) <- ifelse(names(tbl) %in% tbl_matchNames$Fields, tbl_matchNames$Names[match(names(tbl), tbl_matchNames$Fields)], names(tbl))
+      write.csv(tbl, file, row.names = FALSE)
+    }
+  )
+
+
+  ## Box plot
+  ### Output plot
+  get_plot_box <- reactive({
+    
+    #### Get the box layout (e.g. 9er or 10er)
+    selected_box <- filter(sto, box == input$select_box)
+    x <- as.integer(as.integer(strsplit(selected_box$stolayout, "x")[[1]][[1]]))
+    
+    #### Generate a table with the positions
+    boxlist <- data.frame(
+      rowID = factor(rep(LETTERS[1:x], each = x), levels = rev(LETTERS[1:x])), 
+      colID = factor(rep(1:x, times = x)), 
+      position = 1:x^2)
+    
+    #### Add the aliquot information, if available
+    alq_filtered <- get_box_filtered()
+    if(nrow(alq_filtered) > 0) {
+      alq_format <- select(alq_filtered, patient = patpatientid, sample = smpsampleid, material = alqsampletype, cells = alqcelltype, cellnumber = alqcellnumber, position = alqposition, empty = alqempty)
+      alq_format$material <- gsub("peripheral blood", "PB", alq_format$material)
+      alq_format$material <- gsub("bone marrow", "BM", alq_format$material)
+      alq_format$material <- gsub("lymph node", "LN", alq_format$material)
+      alq_format$material <- gsub("serum", "SE", alq_format$material)
+      alq_format$material <- gsub("saliva", "SA", alq_format$material)
+      boxlist_alq <- merge(boxlist, alq_format, by = "position", all.x = TRUE)
+      boxlist_alq$status <- factor(ifelse(is.na(boxlist_alq$empty), "empty", ifelse(boxlist_alq$empty == TRUE, "used", "filled")), levels = c("empty", "filled", "used"))
+    } else {
+      boxlist_alq <- boxlist
+      boxlist_alq$patient <- NA
+      boxlist_alq$sample <- NA
+      boxlist_alq$material = NA
+      boxlist_alq$cells <- NA
+      boxlist_alq$cellnumber <- NA
+      boxlist_alq$status <- "empty"
+    }
+    
+    #### Generate the plot
+    p <- ggplot(boxlist_alq, aes(colID, rowID)) +
+      geom_tile(aes(fill = status)) +
+      scale_fill_manual(values = c("empty" = "grey", "filled" = "#F8766D", "used" = "#619CFF")) +
+      ggtitle(input$select_box) +
+      theme(axis.title=element_blank(),
+            axis.text=element_blank(),
+            axis.ticks=element_blank(),
+            plot.title = element_text(hjust = 0.5, size = 20),
+            legend.text = element_text(size = 16)) +
+      geom_hline(yintercept = seq(1.5, 9.5, by = 1), color = "white") +
+      geom_vline(xintercept = seq(1.5, 9.5, by = 1), color = "white") +
+      geom_text(aes(label=sprintf("%s_%s\n%s\n%s\n%s\n%s", position, patient, sample, material, cells, cellnumber)), size = 5)
+    
+    p
+    
+  })
+  
+  output$plot_box <- renderPlot({
+    p <- get_plot_box()
+    p
+  }, width = 1000, height = 1000)
+  
+  output$download_plot_box <- downloadHandler(
+    filename = function() {
+      paste0(input$select_box, "_", Sys.Date(), ".png")
+    },
+    content = function(file) {
+      ggsave(file, get_plot_box(), width = 14, height = 14)
+    }
+  )
+  
+  # ----
+  
+  # Tab Genetic data
   
   ### Patient input
   # Select patient ID from dropdown menu
@@ -508,7 +636,7 @@ function(input, output, session) {
       rmarkdown::render(input = "report.Rmd",
                         output_format = "pdf_document",
                         output_file = paste0("report_", patient, "_", Sys.Date(), ".pdf"),
-                        output_dir = "/Users/huellein/Documents/project/cll/script/patientExplorer/report")
+                        output_dir = "/Users/huellein/Documents/project/cll/script/github/patientExplorer/report")
   })
   # ---- End of report
   

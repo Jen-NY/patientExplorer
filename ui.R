@@ -1,6 +1,7 @@
 library(RSQLite)
 library(timevis)
 library(shinyBS)
+library(plotly)
 
 ui <- fluidPage(
   
@@ -69,6 +70,26 @@ ui <- fluidPage(
                                                DT::dataTableOutput("qyr_anl"))
                           ))
                         )
+                      # ----
+             ),
+             
+             tabPanel("Stored boxes",
+                      # ----
+                      
+                      uiOutput("select_box"), 
+                      br(),
+                      tabsetPanel(
+                        tabPanel("Table", 
+                                 br(),
+                                 downloadButton("download_tbl_box", "Download"), 
+                                 hr(),
+                                 DT::dataTableOutput("tbl_box")),
+                        tabPanel("Plot", 
+                                 br(),
+                                 downloadButton("download_plot_box"),
+                                 hr(),
+                                 plotOutput("plot_box"))
+                      )
                       # ----
              ),
              
